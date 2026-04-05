@@ -203,9 +203,120 @@ async function loadDashboard() {
         Estimates without follow-up are automatically enrolled in the follow-up sequence after ${stats.estimates.open > 0 ? '48' : '—'} hours.
       </p>
     `;
+    startAutomationTimers();
   } catch (e) {
     console.error('Dashboard load failed:', e);
   }
+}
+
+// ── Automation Countdown Timers ──
+let _autoTimerInterval = null;
+let _autoSchedules = null;
+let _serverTimeDelta = 0; // ms difference: serverTime - clientTime
+
+function getNextCronRun(cron, now) {
+  const parts = cron.split(' ');
+  const [minField, hourField, , , dowField] = parts;
+
+  // */30 * * * * → next :00 or :30
+  if (minField === '*/30') {
+    const next = new Date(now);
+    next.setSeconds(0, 0);
+    const m = next.getMinutes();
+    if (m < 30) {
+      next.setMinutes(30);
+    } else {
+      next.setMinutes(0);
+      next.setHours(next.getHours() + 1);
+    }
+    if (next <= now) { next.setMinutes(next.getMinutes() + 30); }
+    return next;
+  }
+
+  // 15 * * * * → next :15 of any hour
+  if (/^\d+$/.test(minField) && hourField === '*' && dowField === '*') {
+    const targetMin = parseInt(minField);
+    const next = new Date(now);
+    next.setSeconds(0, 0);
+    next.setMinutes(targetMin);
+    if (next <= now) {
+      next.setHours(next.getHours() + 1);
+    }
+    return next;
+  }
+
+  // 0 6 * * 1 → next Monday at 06:00
+  if (/^\d+$/.test(minField) && /^\d+$/.test(hourField) && /^\d+$/.test(dowField)) {
+    const targetMin = parseInt(minField);
+    const targetHour = parseInt(hourField);
+    const targetDow = parseInt(dowField); // 0=Sun, 1=Mon
+    const next = new Date(now);
+    next.setSeconds(0, 0);
+    next.setMinutes(targetMin);
+    next.setHours(targetHour);
+    // Find next occurrence of target day-of-week
+    const currentDow = next.getDay();
+    let daysUntil = (targetDow - currentDow + 7) % 7;
+    if (daysUntil === 0 && next <= now) daysUntil = 7;
+    next.setDate(next.getDate() + daysUntil);
+    return next;
+  }
+
+  return null;
+}
+
+function formatCountdown(ms) {
+  if (ms <= 0) return 'Running now...';
+  const totalSec = Math.floor(ms / 1000);
+  const days = Math.floor(totalSec / 86400);
+  const hours = Math.floor((totalSec % 86400) / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+
+  if (days > 0) return `Next run in: ${days}d ${hours}h ${mins}m`;
+  if (hours > 0) return `Next run in: ${hours}h ${mins}m ${secs}s`;
+  return `Next run in: ${mins}m ${secs.toString().padStart(2, '0')}s`;
+}
+
+async function startAutomationTimers() {
+  // Stop any existing interval
+  if (_autoTimerInterval) clearInterval(_autoTimerInterval);
+
+  try {
+    const data = await fetch(`${API}/api/health/schedules`).then(r => r.json());
+    _autoSchedules = data.schedules;
+    _serverTimeDelta = new Date(data.serverTime).getTime() - Date.now();
+  } catch {
+    return; // silently fail — timers just won't show
+  }
+
+  // Populate schedule labels and last run info from API
+  for (const s of _autoSchedules) {
+    const scheduleEl = document.getElementById(`auto-schedule-${s.name}`);
+    if (scheduleEl) scheduleEl.textContent = s.label;
+    const sublabelEl = document.getElementById(`auto-sublabel-${s.name}`);
+    if (sublabelEl && s.sublabel) sublabelEl.textContent = s.sublabel;
+    const lastEl = document.getElementById(`auto-last-${s.name}`);
+    if (lastEl && s.lastRun) {
+      lastEl.textContent = `Last run: ${timeAgo(s.lastRun)} — ${s.lastResult}`;
+      lastEl.classList.remove('hidden');
+    }
+  }
+
+  function tick() {
+    const now = new Date(Date.now() + _serverTimeDelta);
+    for (const s of _autoSchedules) {
+      const el = document.getElementById(`auto-timer-${s.name}`);
+      if (!el) continue;
+      const nextRun = getNextCronRun(s.cron, now);
+      if (nextRun) {
+        el.textContent = formatCountdown(nextRun.getTime() - now.getTime());
+      }
+    }
+  }
+
+  tick(); // run immediately
+  _autoTimerInterval = setInterval(tick, 1000);
 }
 
 // ── Campaigns ──
@@ -1346,13 +1457,16 @@ function escapeHtml(str) {
 
 function formatDate(dateStr) {
   if (!dateStr) return '—';
-  const d = new Date(dateStr);
+  const normalized = dateStr.endsWith('Z') || dateStr.includes('+') || dateStr.includes('T') ? dateStr : dateStr + 'Z';
+  const d = new Date(normalized);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function timeAgo(dateStr) {
   const now = new Date();
-  const then = new Date(dateStr);
+  // SQLite stores UTC but without Z suffix — append it if missing
+  const normalized = dateStr.endsWith('Z') || dateStr.includes('+') || dateStr.includes('T') ? dateStr : dateStr + 'Z';
+  const then = new Date(normalized);
   const diff = Math.floor((now - then) / 1000);
   if (diff < 60) return 'just now';
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;

@@ -72,12 +72,57 @@
     <div id="page-dashboard" class="page">
       <div class="page-header">
         <h2>Dashboard</h2>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary btn-sm" onclick="runAction('run-reviews')">Run Reviews</button>
-          <button class="btn btn-secondary btn-sm" onclick="runAction('run-sequences')">Run Sequences</button>
-          <button class="btn btn-secondary btn-sm" onclick="runAction('run-classification')">Classify</button>
+      </div>
+
+      <!-- Automation Status -->
+      <div class="card" style="margin-bottom:16px;padding:16px 20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <h3 style="margin:0;font-size:15px;">Automations Running</h3>
+          <span style="font-size:11px;color:var(--gray-500);">These run automatically — no action needed</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+          <div class="auto-status-item">
+            <div class="auto-status-dot auto-dot-active"></div>
+            <div>
+              <div class="auto-status-name">Review Requests</div>
+              <div class="auto-status-desc">Texts customers a Google review link after every completed job</div>
+              <div class="auto-status-schedule" id="auto-schedule-review_requests">Loading schedule...</div>
+              <div class="auto-status-sublabel" id="auto-sublabel-review_requests"></div>
+              <div class="auto-status-timer" id="auto-timer-review_requests">Loading...</div>
+              <div class="auto-status-last hidden" id="auto-last-review_requests"></div>
+            </div>
+          </div>
+          <div class="auto-status-item">
+            <div class="auto-status-dot auto-dot-active"></div>
+            <div>
+              <div class="auto-status-name">Estimate Follow-Ups</div>
+              <div class="auto-status-desc">Sends SMS/email sequences to unsold estimates automatically</div>
+              <div class="auto-status-schedule" id="auto-schedule-sequences">Loading schedule...</div>
+              <div class="auto-status-sublabel" id="auto-sublabel-sequences"></div>
+              <div class="auto-status-timer" id="auto-timer-sequences">Loading...</div>
+              <div class="auto-status-last hidden" id="auto-last-sequences"></div>
+            </div>
+          </div>
+          <div class="auto-status-item">
+            <div class="auto-status-dot auto-dot-active"></div>
+            <div>
+              <div class="auto-status-name">Customer Classification</div>
+              <div class="auto-status-desc">Scores and tags customers for outbound campaign targeting</div>
+              <div class="auto-status-schedule" id="auto-schedule-classification">Loading schedule...</div>
+              <div class="auto-status-sublabel" id="auto-sublabel-classification"></div>
+              <div class="auto-status-timer" id="auto-timer-classification">Loading...</div>
+              <div class="auto-status-last hidden" id="auto-last-classification"></div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--gray-200);display:flex;align-items:center;gap:12px;">
+          <span style="font-size:11px;color:var(--gray-500);">Manual trigger (for testing):</span>
+          <button class="btn btn-secondary btn-sm" onclick="runAction('run-reviews')">Run Reviews Now</button>
+          <button class="btn btn-secondary btn-sm" onclick="runAction('run-sequences')">Run Sequences Now</button>
+          <button class="btn btn-secondary btn-sm" onclick="runAction('run-classification')">Classify Now</button>
         </div>
       </div>
+
       <div class="stats-grid" id="stats-grid"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <div class="card">

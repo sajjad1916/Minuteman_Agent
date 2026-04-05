@@ -56,6 +56,7 @@ app.use('/api/templates', requireAuth, require('./src/routes/templates'));
 app.post('/api/actions/run-reviews', requireAuth, async (req, res) => {
   try {
     const sent = await sequencer.processReviewRequests();
+    automationStatus.review_requests = { lastRun: new Date().toISOString(), lastResult: `${sent} review(s) sent` };
     res.json({ success: true, sent });
   } catch (err) {
     logger.error(`[action] Review processing failed: ${err.message}`);
@@ -68,6 +69,7 @@ app.post('/api/actions/run-sequences', requireAuth, async (req, res) => {
     const synced = await serviceTitan.syncEstimateStatuses();
     const enrolled = await sequencer.enrollUnsoldEstimates();
     const sent = await sequencer.processSequences();
+    automationStatus.sequences = { lastRun: new Date().toISOString(), lastResult: `${enrolled} enrolled, ${sent} sent` };
     res.json({ success: true, synced, enrolled, sent });
   } catch (err) {
     logger.error(`[action] Sequence processing failed: ${err.message}`);
@@ -79,6 +81,7 @@ app.post('/api/actions/run-classification', requireAuth, async (req, res) => {
   try {
     const customers = await serviceTitan.getCustomersForClassification();
     const results = await classifyCustomers(customers);
+    automationStatus.classification = { lastRun: new Date().toISOString(), lastResult: `${results.length} classified` };
     res.json({ success: true, classified: results.length });
   } catch (err) {
     logger.error(`[action] Classification failed: ${err.message}`);
@@ -93,6 +96,29 @@ app.get('/api/health', (req, res) => {
     mode: settings.appMode,
     uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
+  });
+});
+
+// Automation run tracking
+const automationStatus = {
+  review_requests: { lastRun: null, lastResult: null },
+  sequences: { lastRun: null, lastResult: null },
+  classification: { lastRun: null, lastResult: null },
+};
+
+// Automation schedules (for countdown timers in UI)
+app.get('/api/health/schedules', (req, res) => {
+  res.json({
+    serverTime: new Date().toISOString(),
+    guardrails: {
+      reviewDelayHours: settings.guardrails.reviewRequestDelayHours,
+      estimateDelayHours: settings.guardrails.estimateFollowupDelayHours,
+    },
+    schedules: [
+      { name: 'review_requests', cron: '*/30 * * * *', label: `Sends ${settings.guardrails.reviewRequestDelayHours}h after job completion`, sublabel: 'Checks every 30 min', ...automationStatus.review_requests },
+      { name: 'sequences', cron: '15 * * * *', label: `Enrolls after ${settings.guardrails.estimateFollowupDelayHours}h, then follows sequence`, sublabel: 'Checks every hour', ...automationStatus.sequences },
+      { name: 'classification', cron: '0 6 * * 1', label: 'Every Monday at 6 AM', ...automationStatus.classification },
+    ],
   });
 });
 
@@ -116,8 +142,10 @@ app.get('*', (req, res) => {
 cron.schedule('*/30 * * * *', async () => {
   logger.info('[cron] Running review request processing...');
   try {
-    await sequencer.processReviewRequests();
+    const sent = await sequencer.processReviewRequests();
+    automationStatus.review_requests = { lastRun: new Date().toISOString(), lastResult: `${sent} review(s) sent` };
   } catch (err) {
+    automationStatus.review_requests = { lastRun: new Date().toISOString(), lastResult: `Error: ${err.message}` };
     logger.error(`[cron] Review processing failed: ${err.message}`);
   }
 });
@@ -126,10 +154,12 @@ cron.schedule('*/30 * * * *', async () => {
 cron.schedule('15 * * * *', async () => {
   logger.info('[cron] Running sequence processing...');
   try {
-    await serviceTitan.syncEstimateStatuses();
-    await sequencer.enrollUnsoldEstimates();
-    await sequencer.processSequences();
+    const synced = await serviceTitan.syncEstimateStatuses();
+    const enrolled = await sequencer.enrollUnsoldEstimates();
+    const sent = await sequencer.processSequences();
+    automationStatus.sequences = { lastRun: new Date().toISOString(), lastResult: `${enrolled} enrolled, ${sent} sent` };
   } catch (err) {
+    automationStatus.sequences = { lastRun: new Date().toISOString(), lastResult: `Error: ${err.message}` };
     logger.error(`[cron] Sequence processing failed: ${err.message}`);
   }
 });
@@ -139,8 +169,10 @@ cron.schedule('0 6 * * 1', async () => {
   logger.info('[cron] Running weekly customer classification...');
   try {
     const customers = await serviceTitan.getCustomersForClassification();
-    await classifyCustomers(customers);
+    const results = await classifyCustomers(customers);
+    automationStatus.classification = { lastRun: new Date().toISOString(), lastResult: `${results.length} classified` };
   } catch (err) {
+    automationStatus.classification = { lastRun: new Date().toISOString(), lastResult: `Error: ${err.message}` };
     logger.error(`[cron] Classification failed: ${err.message}`);
   }
 });

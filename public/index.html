@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minuteman Marketing Agent</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen" class="login-wrapper">
+  <div class="login-card">
+    <h1>Minuteman Marketing Agent</h1>
+    <p>Campaign management for Minuteman Plumbing, Heating &amp; Cooling</p>
+    <input type="text" class="form-input" id="login-user" placeholder="Username" value="nat">
+    <input type="password" class="form-input" id="login-pass" placeholder="Password" value="minuteman2026">
+    <button class="btn btn-primary" onclick="doLogin()">Log In</button>
+    <div id="login-error" class="hidden" style="color:var(--red);font-size:13px;text-align:center;margin-top:8px;"></div>
+    <p class="login-demo-note">Demo Mode — credentials pre-filled for testing</p>
+  </div>
+</div>
+
+<!-- App Shell -->
+<div id="app-shell" class="app hidden">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <h1>Minuteman Agent</h1>
+      <p>Marketing Automation</p>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-item active" data-page="dashboard">
+        <span class="nav-icon">&#9632;</span>
+        <span>Dashboard</span>
+      </div>
+      <div class="nav-item" data-page="campaigns">
+        <span class="nav-icon">&#9654;</span>
+        <span>Campaigns</span>
+      </div>
+      <div class="nav-item" data-page="templates">
+        <span class="nav-icon">&#9998;</span>
+        <span>Templates</span>
+      </div>
+      <div class="nav-item" data-page="customers">
+        <span class="nav-icon">&#9679;</span>
+        <span>Customers</span>
+      </div>
+      <div class="nav-item" data-page="activity">
+        <span class="nav-icon">&#8942;</span>
+        <span>Activity</span>
+      </div>
+      <div class="nav-item" data-page="logs">
+        <span class="nav-icon">&#9776;</span>
+        <span>Logs</span>
+      </div>
+      <div class="nav-item" data-page="settings">
+        <span class="nav-icon">&#9881;</span>
+        <span>Settings</span>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <span class="demo-badge" id="mode-badge">DEMO</span>
+      <div style="margin-top:8px;">v1.0 &middot; Sagan Build</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- Dashboard Page -->
+    <div id="page-dashboard" class="page">
+      <div class="page-header">
+        <h2>Dashboard</h2>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-secondary btn-sm" onclick="runAction('run-reviews')">Run Reviews</button>
+          <button class="btn btn-secondary btn-sm" onclick="runAction('run-sequences')">Run Sequences</button>
+          <button class="btn btn-secondary btn-sm" onclick="runAction('run-classification')">Classify</button>
+        </div>
+      </div>
+      <div class="stats-grid" id="stats-grid"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="card">
+          <div class="card-header"><h3>Recent Activity</h3></div>
+          <div id="dashboard-activity"></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><h3>Open Estimates</h3></div>
+          <div id="dashboard-estimates"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Campaigns Page -->
+    <div id="page-campaigns" class="page hidden">
+      <div class="page-header">
+        <h2>Campaigns</h2>
+        <button class="btn btn-primary" onclick="showNewCampaignModal()">+ New Campaign</button>
+      </div>
+      <div id="campaigns-list"></div>
+    </div>
+
+    <!-- Campaign Detail -->
+    <div id="page-campaign-detail" class="page hidden">
+      <div class="page-header">
+        <div>
+          <button class="btn btn-secondary btn-sm" onclick="showPage('campaigns')" style="margin-bottom:8px;">&larr; Back</button>
+          <h2 id="campaign-detail-title"></h2>
+        </div>
+        <div id="campaign-detail-actions"></div>
+      </div>
+      <div class="tabs" id="campaign-tabs">
+        <div class="tab active" data-tab="overview">Overview</div>
+        <div class="tab" data-tab="sequences">Sequences</div>
+        <div class="tab" data-tab="enrollments">Enrollments</div>
+      </div>
+      <div id="campaign-detail-content"></div>
+    </div>
+
+    <!-- Templates Page -->
+    <div id="page-templates" class="page hidden">
+      <div class="page-header">
+        <h2>Message Templates</h2>
+        <button class="btn btn-primary" onclick="showTemplateModal()">+ New Template</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button class="btn btn-secondary btn-sm template-filter active" data-channel="" onclick="filterTemplates('')">All</button>
+        <button class="btn btn-secondary btn-sm template-filter" data-channel="sms" onclick="filterTemplates('sms')">SMS</button>
+        <button class="btn btn-secondary btn-sm template-filter" data-channel="email" onclick="filterTemplates('email')">Email</button>
+      </div>
+      <div id="templates-grid" class="templates-grid"></div>
+    </div>
+
+    <!-- Customers Page -->
+    <div id="page-customers" class="page hidden">
+      <div class="page-header">
+        <h2>Customers</h2>
+        <button class="btn btn-secondary" onclick="exportCustomers()">Export CSV</button>
+      </div>
+      <div class="search-bar">
+        <input type="text" class="form-input" id="customer-search" placeholder="Search by name, email, or phone..." onkeyup="debounce(loadCustomers, 300)()">
+        <select class="form-select" id="customer-source-filter" style="width:150px;" onchange="loadCustomers()">
+          <option value="">All Sources</option>
+          <option value="minuteman">Minuteman</option>
+          <option value="rizzo">Rizzo</option>
+        </select>
+        <select class="form-select" id="customer-priority-filter" style="width:150px;" onchange="loadCustomers()">
+          <option value="">All Priorities</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Source</th>
+              <th>Priority</th>
+              <th>Segments</th>
+              <th>Jobs</th>
+              <th>Last Service</th>
+              <th>Campaigns</th>
+            </tr>
+          </thead>
+          <tbody id="customers-tbody"></tbody>
+        </table>
+        <div id="customers-pagination" style="padding:12px;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--gray-600);"></div>
+      </div>
+    </div>
+
+    <!-- Customer Detail -->
+    <div id="page-customer-detail" class="page hidden">
+      <button class="btn btn-secondary btn-sm" onclick="showPage('customers')" style="margin-bottom:12px;">&larr; Back</button>
+      <div id="customer-detail-content"></div>
+    </div>
+
+    <!-- Activity Page -->
+    <div id="page-activity" class="page hidden">
+      <div class="page-header"><h2>Activity Log</h2></div>
+      <div class="card" id="activity-list"></div>
+    </div>
+
+    <!-- Logs Page -->
+    <div id="page-logs" class="page hidden">
+      <div class="page-header">
+        <h2>Server Logs</h2>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="logs-auto-status" style="font-size:11px;color:var(--gray-500);"></span>
+          <button class="btn btn-secondary btn-sm" onclick="loadLogs()">Refresh</button>
+          <button class="btn btn-secondary btn-sm" id="logs-auto-btn" onclick="toggleLogsAutoRefresh()">Auto: Off</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <select class="form-select" id="logs-level-filter" style="width:120px;" onchange="logsOffset=0;loadLogs()">
+          <option value="">All Levels</option>
+          <option value="info">INFO</option>
+          <option value="warn">WARN</option>
+          <option value="error">ERROR</option>
+        </select>
+        <select class="form-select" id="logs-source-filter" style="width:160px;" onchange="logsOffset=0;loadLogs()">
+          <option value="">All Sources</option>
+          <option value="cron">Cron Jobs</option>
+          <option value="Sequencer">Sequencer</option>
+          <option value="ServiceTitan">Service Titan</option>
+          <option value="Hatch">Hatch SMS</option>
+          <option value="Email">Email</option>
+          <option value="Classification">Classification</option>
+          <option value="startup">Startup</option>
+          <option value="action">Manual Actions</option>
+          <option value="http">HTTP Requests</option>
+        </select>
+        <input type="text" class="form-input" id="logs-search" placeholder="Search logs..." style="flex:1;min-width:200px;" onkeyup="logsOffset=0;debounce(loadLogs, 400)()">
+      </div>
+      <div class="card" id="logs-list" style="font-family:'SF Mono',Monaco,Consolas,monospace;font-size:12px;max-height:70vh;overflow-y:auto;padding:0;"></div>
+      <div id="logs-pagination" style="padding:12px 0;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--gray-600);"></div>
+    </div>
+
+    <!-- Settings Page -->
+    <div id="page-settings" class="page hidden">
+      <div class="page-header"><h2>Settings &amp; Guardrails</h2></div>
+      <div id="settings-content"></div>
+    </div>
+  </main>
+</div>
+
+<!-- Modal Container -->
+<div id="modal-container" class="hidden"></div>
+
+<script src="/js/app.js"></script>
+</body>
+</html>

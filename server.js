@@ -41,15 +41,19 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 // API routes
-app.use('/api/auth', require('./src/routes/auth'));
-app.use('/api/dashboard', require('./src/routes/dashboard'));
-app.use('/api/campaigns', require('./src/routes/campaigns'));
-app.use('/api/customers', require('./src/routes/customers'));
-app.use('/api/sequences', require('./src/routes/sequences'));
-app.use('/api/templates', require('./src/routes/templates'));
+const authRouter = require('./src/routes/auth');
+const { requireAuth } = authRouter;
+app.use('/api/auth', authRouter);
 
-// Manual triggers
-app.post('/api/actions/run-reviews', async (req, res) => {
+// Protected routes — require valid token
+app.use('/api/dashboard', requireAuth, require('./src/routes/dashboard'));
+app.use('/api/campaigns', requireAuth, require('./src/routes/campaigns'));
+app.use('/api/customers', requireAuth, require('./src/routes/customers'));
+app.use('/api/sequences', requireAuth, require('./src/routes/sequences'));
+app.use('/api/templates', requireAuth, require('./src/routes/templates'));
+
+// Manual triggers (protected)
+app.post('/api/actions/run-reviews', requireAuth, async (req, res) => {
   try {
     const sent = await sequencer.processReviewRequests();
     res.json({ success: true, sent });
@@ -59,7 +63,7 @@ app.post('/api/actions/run-reviews', async (req, res) => {
   }
 });
 
-app.post('/api/actions/run-sequences', async (req, res) => {
+app.post('/api/actions/run-sequences', requireAuth, async (req, res) => {
   try {
     const synced = await serviceTitan.syncEstimateStatuses();
     const enrolled = await sequencer.enrollUnsoldEstimates();
@@ -71,7 +75,7 @@ app.post('/api/actions/run-sequences', async (req, res) => {
   }
 });
 
-app.post('/api/actions/run-classification', async (req, res) => {
+app.post('/api/actions/run-classification', requireAuth, async (req, res) => {
   try {
     const customers = await serviceTitan.getCustomersForClassification();
     const results = await classifyCustomers(customers);
@@ -92,8 +96,8 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Settings endpoint
-app.get('/api/settings', (req, res) => {
+// Settings endpoint (protected)
+app.get('/api/settings', requireAuth, (req, res) => {
   res.json({
     appMode: settings.appMode,
     guardrails: settings.guardrails,

@@ -1,5 +1,14 @@
 -- Minuteman Marketing Agent — Database Schema
 
+-- ── Users ──
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT NOT NULL UNIQUE,
+  password TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'viewer', -- 'admin' | 'viewer'
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
 -- ── Customers ──
 CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

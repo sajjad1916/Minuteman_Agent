@@ -21,8 +21,23 @@ db.exec(`
   DELETE FROM estimates;
   DELETE FROM jobs;
   DELETE FROM customers;
+  DELETE FROM users;
   DELETE FROM sqlite_sequence;
 `);
+
+// ── Default Admin User ──
+const crypto = require('crypto');
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+const settings = require('../config/settings');
+db.prepare(`
+  INSERT INTO users (username, password, role) VALUES (?, ?, 'admin')
+`).run(settings.admin.username, hashPassword(settings.admin.password));
+console.log(`[seed] Default admin user "${settings.admin.username}" created`);
 
 // ── Customers ──
 const insertCustomer = db.prepare(`

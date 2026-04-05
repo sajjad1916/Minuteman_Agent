@@ -5,11 +5,32 @@ let currentPage = 'dashboard';
 let customerPage = 1;
 let logsOffset = 0;
 let logsAutoRefresh = null;
+let authToken = localStorage.getItem('mm_token') || '';
+let currentUser = null;
+
+// ── Authenticated fetch wrapper ──
+function apiFetch(url, options = {}) {
+  options.headers = options.headers || {};
+  if (authToken) {
+    options.headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  return fetch(url, options).then(res => {
+    if (res.status === 401) {
+      // Token expired or invalid — force logout
+      doLogout();
+      throw new Error('Session expired');
+    }
+    return res;
+  });
+}
 
 // ── Auth ──
 async function doLogin() {
   const username = document.getElementById('login-user').value;
   const password = document.getElementById('login-pass').value;
+  const errorEl = document.getElementById('login-error');
+  errorEl.classList.add('hidden');
+
   try {
     const res = await fetch(`${API}/api/auth/login`, {
       method: 'POST',
@@ -17,21 +38,67 @@ async function doLogin() {
       body: JSON.stringify({ username, password }),
     });
     const data = await res.json();
-    if (data.success) {
-      document.getElementById('login-screen').classList.add('hidden');
-      document.getElementById('app-shell').classList.remove('hidden');
-      loadDashboard();
-      loadSettings();
+    if (data.success && data.token) {
+      authToken = data.token;
+      currentUser = data.user;
+      localStorage.setItem('mm_token', authToken);
+      enterApp();
     } else {
-      const el = document.getElementById('login-error');
-      el.textContent = 'Invalid credentials';
-      el.classList.remove('hidden');
+      errorEl.textContent = data.error || 'Invalid credentials';
+      errorEl.classList.remove('hidden');
     }
   } catch (e) {
-    document.getElementById('login-error').textContent = 'Connection error';
-    document.getElementById('login-error').classList.remove('hidden');
+    errorEl.textContent = 'Connection error';
+    errorEl.classList.remove('hidden');
   }
 }
+
+function doLogout() {
+  if (authToken) {
+    fetch(`${API}/api/auth/logout`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${authToken}` },
+    }).catch(() => {});
+  }
+  authToken = '';
+  currentUser = null;
+  localStorage.removeItem('mm_token');
+  document.getElementById('app-shell').classList.add('hidden');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('login-error').classList.add('hidden');
+}
+
+function enterApp() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app-shell').classList.remove('hidden');
+  const userEl = document.getElementById('sidebar-user');
+  if (userEl && currentUser) {
+    userEl.textContent = `${currentUser.username} (${currentUser.role})`;
+  }
+  loadDashboard();
+  loadSettings();
+}
+
+// Auto-restore session on page load
+(async function restoreSession() {
+  if (!authToken) return;
+  try {
+    const res = await fetch(`${API}/api/auth/me`, {
+      headers: { 'Authorization': `Bearer ${authToken}` },
+    });
+    const data = await res.json();
+    if (data.success) {
+      currentUser = data.user;
+      enterApp();
+    } else {
+      localStorage.removeItem('mm_token');
+      authToken = '';
+    }
+  } catch {
+    localStorage.removeItem('mm_token');
+    authToken = '';
+  }
+})();
 
 // ── Navigation ──
 document.querySelectorAll('.nav-item').forEach(item => {
@@ -65,7 +132,7 @@ function showPage(page) {
 async function loadDashboard() {
   try {
     const [stats, activity] = await Promise.all([
-      fetch(`${API}/api/dashboard`).then(r => r.json()),
+      apiFetch(`${API}/api/dashboard`).then(r => r.json()),
       fetch(`${API}/api/dashboard/activity?limit=10`).then(r => r.json()),
     ]);
 
@@ -125,7 +192,7 @@ async function loadDashboard() {
       : '<p style="color:var(--gray-500);font-size:13px;padding:8px 0;">No recent activity</p>';
 
     // Load open estimates for dashboard
-    const customersRes = await fetch(`${API}/api/customers?limit=100`);
+    const customersRes = await apiFetch(`${API}/api/customers?limit=100`);
     const customersData = await customersRes.json();
     // We'll show estimates from the dashboard stats instead
     document.getElementById('dashboard-estimates').innerHTML = `
@@ -144,7 +211,7 @@ async function loadDashboard() {
 // ── Campaigns ──
 async function loadCampaigns() {
   try {
-    const campaigns = await fetch(`${API}/api/campaigns`).then(r => r.json());
+    const campaigns = await apiFetch(`${API}/api/campaigns`).then(r => r.json());
     document.getElementById('campaigns-list').innerHTML = campaigns.map(c => `
       <div class="card" style="cursor:pointer;" onclick="loadCampaignDetail(${c.id})">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
@@ -177,7 +244,7 @@ async function loadCampaigns() {
 
 async function loadCampaignDetail(id) {
   try {
-    const data = await fetch(`${API}/api/campaigns/${id}`).then(r => r.json());
+    const data = await apiFetch(`${API}/api/campaigns/${id}`).then(r => r.json());
     document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
     document.getElementById('page-campaign-detail').classList.remove('hidden');
 
@@ -289,7 +356,7 @@ function renderCampaignTab(data, tab) {
 }
 
 async function campaignAction(id, action) {
-  const res = await fetch(`${API}/api/campaigns/${id}/${action}`, { method: 'POST' });
+  const res = await apiFetch(`${API}/api/campaigns/${id}/${action}`, { method: 'POST' });
   const data = await res.json();
   if (action === 'activate' && data.enrolled > 0) {
     alert(`Campaign activated! ${data.enrolled} customers auto-enrolled based on matching segments.`);
@@ -302,7 +369,7 @@ function exportCampaignContacts(campaignId) {
 }
 
 async function stopEnrollment(enrollmentId, campaignId) {
-  await fetch(`${API}/api/sequences/enrollment/${enrollmentId}/stop`, { method: 'POST' });
+  await apiFetch(`${API}/api/sequences/enrollment/${enrollmentId}/stop`, { method: 'POST' });
   loadCampaignDetail(campaignId);
 }
 
@@ -368,7 +435,7 @@ async function createCampaign() {
     daily_email_cap: parseInt(document.getElementById('new-camp-email').value) || 30,
   };
   if (!body.name) return alert('Campaign name is required');
-  await fetch(`${API}/api/campaigns`, {
+  await apiFetch(`${API}/api/campaigns`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -518,13 +585,13 @@ async function saveStep(campaignId, stepId) {
 
   try {
     if (stepId) {
-      await fetch(`${API}/api/sequences/step/${stepId}`, {
+      await apiFetch(`${API}/api/sequences/step/${stepId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
     } else {
-      await fetch(`${API}/api/sequences/${campaignId}`, {
+      await apiFetch(`${API}/api/sequences/${campaignId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -540,7 +607,7 @@ async function saveStep(campaignId, stepId) {
 async function deleteStep(stepId, campaignId) {
   if (!confirm('Delete this sequence step? This cannot be undone.')) return;
   try {
-    await fetch(`${API}/api/sequences/step/${stepId}`, { method: 'DELETE' });
+    await apiFetch(`${API}/api/sequences/step/${stepId}`, { method: 'DELETE' });
     loadCampaignDetail(campaignId);
   } catch (e) {
     alert('Failed to delete step: ' + e.message);
@@ -741,7 +808,7 @@ async function saveTemplate(id) {
 
 async function duplicateTemplate(id) {
   try {
-    await fetch(`${API}/api/templates/${id}/duplicate`, { method: 'POST' });
+    await apiFetch(`${API}/api/templates/${id}/duplicate`, { method: 'POST' });
     invalidateTemplateCache();
     loadTemplates();
   } catch (e) {
@@ -752,7 +819,7 @@ async function duplicateTemplate(id) {
 async function deleteTemplate(id) {
   if (!confirm('Delete this template? This cannot be undone.')) return;
   try {
-    const res = await fetch(`${API}/api/templates/${id}`, { method: 'DELETE' });
+    const res = await apiFetch(`${API}/api/templates/${id}`, { method: 'DELETE' });
     const data = await res.json();
     if (data.error) return alert(data.error);
     invalidateTemplateCache();
@@ -864,7 +931,7 @@ async function loadCustomers() {
 
   try {
     const params = new URLSearchParams({ page: customerPage, limit: 25, search, source, priority });
-    const data = await fetch(`${API}/api/customers?${params}`).then(r => r.json());
+    const data = await apiFetch(`${API}/api/customers?${params}`).then(r => r.json());
 
     document.getElementById('customers-tbody').innerHTML = data.customers.map(c => {
       const segments = c.segments ? JSON.parse(c.segments) : [];
@@ -896,7 +963,7 @@ async function loadCustomers() {
 
 async function loadCustomerDetail(id) {
   try {
-    const data = await fetch(`${API}/api/customers/${id}`).then(r => r.json());
+    const data = await apiFetch(`${API}/api/customers/${id}`).then(r => r.json());
     document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
     document.getElementById('page-customer-detail').classList.remove('hidden');
 
@@ -1080,13 +1147,45 @@ function toggleLogsAutoRefresh() {
 // ── Settings ──
 async function loadSettings() {
   try {
-    const data = await fetch(`${API}/api/settings`).then(r => r.json());
+    const data = await apiFetch(`${API}/api/settings`).then(r => r.json());
     const modeEl = document.getElementById('mode-badge');
     modeEl.textContent = data.appMode.toUpperCase();
     modeEl.style.background = data.appMode === 'demo' ? 'var(--yellow)' : 'var(--green)';
 
     if (currentPage === 'settings') {
+      // Load users list if admin
+      let usersHtml = '';
+      if (currentUser && currentUser.role === 'admin') {
+        try {
+          const users = await apiFetch(`${API}/api/auth/users`).then(r => r.json());
+          const userRows = users.map(u => `
+            <tr>
+              <td>${escapeHtml(u.username)}</td>
+              <td><span class="badge badge-${u.role === 'admin' ? 'high' : 'completed'}">${u.role}</span></td>
+              <td>${formatDate(u.created_at)}</td>
+              <td>${u.username !== currentUser.username ? `<button class="btn btn-secondary btn-sm" onclick="deleteUser(${u.id}, '${escapeHtml(u.username)}')" style="font-size:11px;padding:2px 8px;">Remove</button>` : '<span style="font-size:12px;color:var(--gray-500);">You</span>'}</td>
+            </tr>
+          `).join('');
+
+          usersHtml = `
+            <div class="card">
+              <div class="card-header">
+                <h3>User Management</h3>
+                <button class="btn btn-primary btn-sm" onclick="showAddUserModal()">+ Add User</button>
+              </div>
+              <table>
+                <thead><tr><th>Username</th><th>Role</th><th>Created</th><th></th></tr></thead>
+                <tbody>${userRows}</tbody>
+              </table>
+            </div>
+          `;
+        } catch (e) {
+          console.error('Failed to load users:', e);
+        }
+      }
+
       document.getElementById('settings-content').innerHTML = `
+        ${usersHtml}
         <div class="card">
           <div class="card-header"><h3>Agent Mode</h3></div>
           <p style="font-size:14px;">
@@ -1141,10 +1240,91 @@ async function loadSettings() {
   }
 }
 
+// ── User Management Functions ──
+function showAddUserModal() {
+  const modal = document.getElementById('modal-container');
+  modal.innerHTML = `
+    <div class="modal-overlay" onclick="closeModal()">
+      <div class="modal" onclick="event.stopPropagation()">
+        <h3>Add New User</h3>
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" class="form-input" id="new-user-username" placeholder="Username">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" class="form-input" id="new-user-password" placeholder="Password">
+        </div>
+        <div class="form-group">
+          <label>Role</label>
+          <select class="form-select" id="new-user-role">
+            <option value="viewer">Viewer — can view dashboards and data</option>
+            <option value="admin">Admin — full access including user management</option>
+          </select>
+        </div>
+        <div id="add-user-error" class="hidden" style="color:var(--red);font-size:13px;margin-top:8px;"></div>
+        <div class="modal-actions">
+          <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="addUser()">Add User</button>
+        </div>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+async function addUser() {
+  const username = document.getElementById('new-user-username').value.trim();
+  const password = document.getElementById('new-user-password').value;
+  const role = document.getElementById('new-user-role').value;
+  const errorEl = document.getElementById('add-user-error');
+
+  if (!username || !password) {
+    errorEl.textContent = 'Username and password are required';
+    errorEl.classList.remove('hidden');
+    return;
+  }
+
+  try {
+    const res = await apiFetch(`${API}/api/auth/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, role }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      closeModal();
+      loadSettings();
+    } else {
+      errorEl.textContent = data.error || 'Failed to add user';
+      errorEl.classList.remove('hidden');
+    }
+  } catch (e) {
+    errorEl.textContent = 'Connection error';
+    errorEl.classList.remove('hidden');
+  }
+}
+
+async function deleteUser(id, username) {
+  if (!confirm(`Remove user "${username}"? They will no longer be able to log in.`)) return;
+  try {
+    const res = await apiFetch(`${API}/api/auth/users/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      loadSettings();
+    } else {
+      const data = await res.json();
+      alert(data.error || 'Failed to remove user');
+    }
+  } catch (e) {
+    alert('Connection error');
+  }
+}
+
+
 // ── Actions ──
 async function runAction(action) {
   try {
-    const res = await fetch(`${API}/api/actions/${action}`, { method: 'POST' });
+    const res = await apiFetch(`${API}/api/actions/${action}`, { method: 'POST' });
     const data = await res.json();
     if (data.success) {
       alert(`Action completed: ${JSON.stringify(data)}`);

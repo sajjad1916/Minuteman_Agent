@@ -133,7 +133,7 @@ async function loadDashboard() {
   try {
     const [stats, activity] = await Promise.all([
       apiFetch(`${API}/api/dashboard`).then(r => r.json()),
-      fetch(`${API}/api/dashboard/activity?limit=10`).then(r => r.json()),
+      apiFetch(`${API}/api/dashboard/activity?limit=10`).then(r => r.json()),
     ]);
 
     document.getElementById('stats-grid').innerHTML = `
@@ -620,7 +620,7 @@ let _templateFilter = '';
 
 async function fetchTemplates(channel) {
   const url = channel ? `${API}/api/templates?channel=${channel}` : `${API}/api/templates`;
-  const data = await fetch(url).then(r => r.json());
+  const data = await apiFetch(url).then(r => r.json());
   return data;
 }
 
@@ -797,7 +797,7 @@ async function saveTemplate(id) {
   try {
     const url = id ? `${API}/api/templates/${id}` : `${API}/api/templates`;
     const method = id ? 'PUT' : 'POST';
-    await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    await apiFetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     closeModal();
     invalidateTemplateCache();
     loadTemplates();
@@ -1067,7 +1067,7 @@ function exportCustomers() {
 // ── Activity ──
 async function loadActivity() {
   try {
-    const data = await fetch(`${API}/api/dashboard/activity?limit=100`).then(r => r.json());
+    const data = await apiFetch(`${API}/api/dashboard/activity?limit=100`).then(r => r.json());
     document.getElementById('activity-list').innerHTML = data.length
       ? data.map(a => `
         <div class="activity-item">
@@ -1096,7 +1096,7 @@ async function loadLogs() {
     if (source) params.set('source', source);
     if (search) params.set('search', search);
 
-    const data = await fetch(`${API}/api/dashboard/logs?${params}`).then(r => r.json());
+    const data = await apiFetch(`${API}/api/dashboard/logs?${params}`).then(r => r.json());
 
     document.getElementById('logs-list').innerHTML = data.entries.length
       ? data.entries.map(entry => {
